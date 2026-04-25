@@ -1,0 +1,5 @@
+# Use Homebrew GCC as the reference compiler so clangd resolves the same
+# headers the build actually uses, instead of Apple Clang's libc++.
+CompileFlags:
+  Compiler: /opt/homebrew/bin/g++-15
+  CompilationDatabase: build
