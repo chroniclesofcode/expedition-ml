@@ -62,3 +62,7 @@ target_link_libraries(matmul PRIVATE hip_cpu_rt::hip_cpu_rt)
 
 add_executable(prefix_sum src/prefix_sum.cpp)
 target_link_libraries(prefix_sum PRIVATE hip_cpu_rt::hip_cpu_rt)
+
+
+add_executable(vecadd src/vecadd.cpp)
+target_link_libraries(vecadd PRIVATE hip_cpu_rt::hip_cpu_rt)
