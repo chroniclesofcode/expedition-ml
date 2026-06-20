@@ -4,6 +4,9 @@ An exploration of machine learning and GPU programming, written from
 scratch in C++. Structured as a mini monorepo: each subdirectory is a
 self-contained area with its own purpose.
 
+The code here is NOT written by AI. It is written by my hand. That being
+said, the infra such as CMakeLists.txt and the README's have some AI input.
+
 ## Layout
 
 ```
@@ -22,11 +25,16 @@ in HIP-CPU and we don't want that dependency on the ML side.
 ### Roles
 
 - **`lune`** — primitives. Things every model needs: MLP, attention,
-  layernorm, activations, optimizers, tensor utilities. Built as a static
-  library; everything else imports from here.
+  layernorm, activations, optimizers, tensor utilities. Header-only;
+  everything else imports from here.
 - **`maelle`** — clean, importable model architectures composed from
   `lune` primitives. Vanilla Transformer, nanoGPT, etc. live here once
-  they're settled.
+  they're settled. Header-only.
+
+`lune` and `maelle` are header-only (`.hpp`) libraries — implementations
+live inline in the headers under `include/`, and CMake exposes each as an
+`INTERFACE` target. There are no `.cpp` files to compile or source lists
+to maintain; only `verso` executables get compiled.
 - **`verso`** — the research playground. Training scripts, ablations,
   novel architecture sketches. Each experiment is its own executable.
   When something here matures, it graduates into `maelle`.
@@ -35,7 +43,6 @@ Reserved names (folders to add only when a real need shows up):
 `sciel`, `monoco`, `esquie`, `golgra`, `renoir`.
 
 ## Build
-
 From the repo root:
 
 ```bash
@@ -64,23 +71,21 @@ hello from verso
 
 ### Add a primitive to `lune`
 
-1. Header: `lune/include/lune/your_thing.hpp` — declare under
-   `namespace lune`.
-2. Source: `lune/src/your_thing.cpp`.
-3. In `lune/CMakeLists.txt`, append the `.cpp` to the `add_library(lune ...)`
-   source list. Headers are auto-discovered via the public include dir.
+`lune` is header-only. Drop the header at
+`lune/include/lune/your_thing.hpp`, declare under `namespace lune`, and put
+the implementation inline in the header. No `.cpp`, no CMake edit — the
+header is auto-discovered via the public include dir.
 
 Consumers then `#include "lune/your_thing.hpp"`.
 
 ### Add a model to `maelle`
 
-1. Header: `maelle/include/maelle/your_model.hpp` — declare under
-   `namespace maelle`. Use `lune` primitives freely.
-2. Source: `maelle/src/your_model.cpp`.
-3. In `maelle/CMakeLists.txt`, append the `.cpp` to the `add_library(maelle ...)`
-   source list.
+`maelle` is header-only too. Drop the header at
+`maelle/include/maelle/your_model.hpp`, declare under `namespace maelle`,
+and use `lune` primitives freely. Implementation goes inline in the header;
+no `.cpp`, no CMake edit.
 
-`maelle` already links to `lune` PUBLICly, so headers from both
+`maelle` links `lune` as an `INTERFACE` dependency, so headers from both
 namespaces are available to anything that depends on `maelle`.
 
 ### Add an experiment to `verso`
@@ -110,3 +115,36 @@ re-globs on its own.
 
 GPU programming exploration via HIP-CPU. Self-contained build; see
 [`gustave/README.md`](./gustave/README.md).
+
+## Style guide
+
+House style for everything under this repo. A [`.clang-format`](./.clang-format)
+at the root encodes the formatting rules; run it before committing.
+
+**Naming**
+
+- **Types** (classes, structs, enums, type aliases) — `PascalCase`:
+  `MLP`, `Transformer`, `LayerNorm`.
+- **Functions and variables** — `snake_case`: `describe()`, `d_model`,
+  `n_layers`.
+- **Member variables** — `snake_case` with a trailing underscore:
+  `in_dim_`, `d_model_`, `n_layers_`.
+- **Namespaces** — lowercase, one word: `lune`, `maelle`.
+- **Constants / enum values** — `snake_case` like other variables; no
+  `ALL_CAPS` macros unless it's an actual preprocessor macro.
+
+**Formatting** (enforced by `.clang-format`)
+
+- 4-space indentation, no tabs.
+- Braces on their own line everywhere — functions, `if`/`else`,
+  `for`/`while`, classes, namespaces. Empty bodies stay inline as `{}`.
+- 100-column soft limit.
+- `*` and `&` bind to the type: `int* p`, `const Tensor& t`.
+
+**Headers**
+
+- `lune` and `maelle` are header-only; put the implementation inline in the
+  `.hpp`. Every header starts with `#pragma once`.
+- Declare `lune` code under `namespace lune`, `maelle` code under
+  `namespace maelle`, and close the namespace with a `// namespace xxx`
+  comment.
