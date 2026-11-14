@@ -1,63 +1,87 @@
 # gustave
 
-GPU programming exploration using [HIP-CPU](https://github.com/ROCm/HIP-CPU),
-an AMD-maintained CPU emulator for the HIP runtime. HIP's API mirrors CUDA
-closely enough that kernels written here translate to CUDA with mechanical
-changes, so this is a way to learn the programming model without a GPU.
+Small CUDA learning examples running on the Apple GPU through
+[cuMetal](https://github.com/Lulzx/cuda-metal). Ordinary `.cu` files use
+`cudaMalloc`, `cudaMemcpy`, and `kernel<<<grid, block>>>()` launches.
+The examples are deliberately unoptimised; cuMetal is experimental and
+supports a subset of CUDA.
 
-## Prerequisites (macOS, Apple Silicon or Intel)
+## Install (once)
 
-HIP-CPU's upstream guidance on macOS is **Homebrew GCC + Intel TBB** — Apple
-Clang's libc++ is missing pieces HIP-CPU depends on.
-
-```bash
-brew install cmake gcc tbb
-```
-
-This installs `g++-15` / `gcc-15` at `/opt/homebrew/bin/`. If a newer GCC
-shows up later, swap the version suffix in the commands below.
-
-## Build
-
-From `gustave/`:
+Requires Apple Silicon, macOS 14+, Homebrew, and Xcode with its Metal tools.
+See the [upstream toolchain guide](https://github.com/Lulzx/cuda-metal/blob/main/docs/build.md).
 
 ```bash
-cmake -S . -B build -DCMAKE_CXX_COMPILER=/opt/homebrew/bin/g++-15
-cmake --build build -j
+xcrun --find metal
+xcrun --find metallib
+brew install cmake lulzx/tap/cumetal
+cumetal doctor
 ```
 
-The first configure pulls HIP-CPU via `FetchContent` and may take a minute.
+If the Metal tools are missing, install/select full Xcode. On recent Xcode,
+`xcodebuild -downloadComponent metalToolchain` installs the Metal component.
+Resolve any failures from `cumetal doctor` before building.
 
-### Known quirk: aarch64 + libco
+## Compile and run
 
-HIP-CPU bundles `libco`, whose aarch64/arm sources unconditionally call
-`VALGRIND_STACK_REGISTER` even when valgrind isn't installed. The
-`CMakeLists.txt` here defines that macro to a no-op on arm so the build
-just works on Apple Silicon — no action needed from you.
-
-## Run
+From the repository root, configure once:
 
 ```bash
-./build/matmul
-./build/prefix_sum
+cmake -S . -B build
 ```
 
-## Editor / clangd setup
+Then use this command every time you want to **build and run all examples**:
 
-`CMAKE_EXPORT_COMPILE_COMMANDS` is on, so `build/compile_commands.json`
-appears after the first configure. The `.clangd` file in this directory
-points clangd at `build/` and tells it to use `g++-15` as the reference
-compiler so header resolution matches the actual build.
+```bash
+cmake --build build --target gustave
+```
 
-In VS Code, install the "clangd" extension and reload the window once the
-build directory exists.
+It discovers every `gustave/src/*.cu` file, compiles changed examples,
+and runs them all, showing their output. Build or runtime failures make
+this command fail. You do not need to edit CMake when adding an example.
+Executables live in `build/gustave/bin/`.
 
-## Adding a new example
+For just one example after building:
 
-1. Drop `src/your_thing.cpp` next to the existing kernels.
-2. Add to `CMakeLists.txt`:
-   ```cmake
-   add_executable(your_thing src/your_thing.cpp)
-   target_link_libraries(your_thing PRIVATE hip_cpu_rt::hip_cpu_rt)
-   ```
-3. `cmake --build build -j`.
+```bash
+./build/gustave/bin/vecadd
+```
+
+Each executable checks every result and exits nonzero on a CUDA error or
+mismatch. Expected results: vector addition ends at `159`, the matrix
+product contains `128` throughout, and the inclusive scan ends at `136`.
+
+To see cuMetal's GPU dispatch diagnostics:
+
+```bash
+CUMETAL_TRACE_GPU=1 cmake --build build --target gustave
+```
+
+Look for `device=apple_gpu` and `launch_success=true` as well as correct
+results. This is GPU execution through Metal. All three examples were
+verified with cuMetal 0.8.0 on an Apple M4, macOS 15.7.4, and Xcode 16.2.
+
+If you prefer working only inside `gustave/`, the equivalent loop is:
+
+```bash
+cmake -S . -B build-cumetal          # once, from gustave/
+cmake --build build-cumetal --target run
+```
+
+CMake invokes `cumetalc` directly, supplying its CUDA header directory;
+cuMetal handles Metal compilation and runtime linking. A custom installation can be selected with
+`-DCUMETALC=/absolute/path/to/cumetalc` at configure time. If needed, also set
+`-DCUMETAL_INCLUDE_DIR=/path/to/cumetal/include`. cuMetal 0.8 needs the
+explicit include path shown above during device compilation. No GCC, TBB,
+HIP, NVIDIA toolkit, or dependency download is needed by this CMake build.
+The default top-level build still builds only the ML code.
+
+## Add an example
+
+Create `src/your_example.cu` with a kernel and its own `main()`, then run
+`cmake --build build --target gustave` from the repository root. `check.cuh` is a tiny
+optional helper for reporting CUDA errors.
+
+These custom CMake commands do not produce `compile_commands.json`.
+For clangd, use CUDA language mode and your cuMetal installation's CUDA
+compatibility include directory; the previous GCC-specific config is removed.

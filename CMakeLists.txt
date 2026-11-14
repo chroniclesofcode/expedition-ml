@@ -11,9 +11,14 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# The ML trio. gustave/ has its own self-contained build and is not
-# included here on purpose -- it pulls in HIP-CPU and we don't want
-# that dependency for the from-scratch ML work.
+# The ML trio builds normally; the gustave target builds and runs CUDA examples.
 add_subdirectory(lune)
 add_subdirectory(maelle)
 add_subdirectory(verso)
+
+add_custom_target(gustave
+    COMMAND ${CMAKE_COMMAND} -S "${CMAKE_SOURCE_DIR}/gustave" -B "${CMAKE_BINARY_DIR}/gustave"
+    COMMAND ${CMAKE_COMMAND} --build "${CMAKE_BINARY_DIR}/gustave" --target run
+    USES_TERMINAL
+    VERBATIM
+)

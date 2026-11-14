@@ -4,23 +4,20 @@ An exploration of machine learning and GPU programming, written from
 scratch in C++. Structured as a mini monorepo: each subdirectory is a
 self-contained area with its own purpose.
 
-The code here is NOT written by AI. It is written by my hand. That being
-said, the infra such as CMakeLists.txt and the README's have some AI input.
-
 ## Layout
 
 ```
 expedition-ml/
-├── CMakeLists.txt        # builds the ML trio (lune + maelle + verso)
+├── CMakeLists.txt        # builds the ML trio; gustave target builds/runs CUDA
 ├── lune/                 # primitives library  (MLP, attention, ...)
 ├── maelle/               # model architectures (Transformer, nanoGPT, ...)
 ├── verso/                # experiments / training scripts
-└── gustave/              # GPU programming sandbox (HIP-CPU, self-contained)
+└── gustave/              # GPU programming sandbox (CUDA via cuMetal, self-contained)
 ```
 
 The **ML trio** (`lune`, `maelle`, `verso`) is built together from the
-top-level `CMakeLists.txt`. `gustave/` has its own build because it pulls
-in HIP-CPU and we don't want that dependency on the ML side.
+top-level `CMakeLists.txt`. `gustave/` has its own build because it uses
+cuMetal to run CUDA kernels on the Apple GPU.
 
 ### Roles
 
@@ -50,8 +47,8 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
-This builds `liblune.a`, `libmaelle.a`, and all executables under
-`verso/`. To run the starter experiment:
+This builds the executables under `verso/`; `lune` and `maelle` are
+header-only libraries. To run the starter experiment:
 
 ```bash
 ./build/verso/train_transformer
@@ -113,8 +110,15 @@ re-globs on its own.
 
 ## `gustave` (separate)
 
-GPU programming exploration via HIP-CPU. Self-contained build; see
-[`gustave/README.md`](./gustave/README.md).
+CUDA programming on Apple Silicon via [cuMetal](https://github.com/Lulzx/cuda-metal).
+After the usual `cmake -S . -B build`, build and run all CUDA examples with:
+
+```bash
+cmake --build build --target gustave
+```
+
+New `gustave/src/*.cu` files are discovered automatically; each needs its own
+`main()`. See [`gustave/README.md`](./gustave/README.md) for prerequisites.
 
 ## Style guide
 
@@ -128,7 +132,9 @@ at the root encodes the formatting rules; run it before committing.
 - **Functions and variables** — `snake_case`: `describe()`, `d_model`,
   `n_layers`.
 - **Member variables** — `snake_case` with a trailing underscore:
-  `in_dim_`, `d_model_`, `n_layers_`.
+  `in_dim_`, `d_model_`, `n_layers_`. Exception: plain data structs (POD
+  aggregates with public members and no behavior) use bare `snake_case`
+  with no trailing underscore.
 - **Namespaces** — lowercase, one word: `lune`, `maelle`.
 - **Constants / enum values** — `snake_case` like other variables; no
   `ALL_CAPS` macros unless it's an actual preprocessor macro.

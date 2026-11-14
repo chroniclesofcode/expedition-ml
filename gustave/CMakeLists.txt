@@ -1,68 +1,47 @@
 cmake_minimum_required(VERSION 3.16)
-project(gustave CXX)
+project(gustave LANGUAGES NONE)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# Default to Release if the user did not pick a build type.
-if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+if(NOT APPLE OR NOT CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    message(FATAL_ERROR "Gustave requires Apple Silicon and macOS 14 or newer.")
 endif()
 
-# Emit compile_commands.json for clangd / IDE tooling.
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# HIP-CPU needs Intel TBB. On macOS the upstream guidance is to use
-# Homebrew GCC + Homebrew TBB; Apple Clang's libc++ is missing pieces
-# HIP-CPU relies on (e.g. parallel STL backed by TBB).
-if(APPLE)
-    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        message(FATAL_ERROR
-            "HIP-CPU on macOS requires Homebrew GCC, not ${CMAKE_CXX_COMPILER_ID}.\n"
-            "Configure with e.g.:\n"
-            "  cmake -S . -B build \\\n"
-            "    -DCMAKE_C_COMPILER=/opt/homebrew/bin/gcc-15 \\\n"
-            "    -DCMAKE_CXX_COMPILER=/opt/homebrew/bin/g++-15")
-    endif()
-
-    # Make Homebrew TBB visible to find_package().
-    execute_process(
-        COMMAND brew --prefix tbb
-        OUTPUT_VARIABLE BREW_TBB_PREFIX
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    if(BREW_TBB_PREFIX)
-        list(PREPEND CMAKE_PREFIX_PATH "${BREW_TBB_PREFIX}")
-    endif()
+find_program(CUMETALC NAMES cumetalc)
+if(NOT CUMETALC)
+    message(FATAL_ERROR
+        "Install cuMetal: brew install lulzx/tap/cumetal, then run cumetal doctor. "
+        "Or configure with -DCUMETALC=/path/to/cumetalc.")
 endif()
 
-# Pull HIP-CPU at configure time.
-include(FetchContent)
-FetchContent_Declare(
-    hip_cpu
-    GIT_REPOSITORY https://github.com/ROCm/HIP-CPU.git
-    GIT_TAG        master
+# cuMetal 0.8 needs an explicit include path for its device compilation.
+get_filename_component(cumetalc_real "${CUMETALC}" REALPATH)
+get_filename_component(cumetal_bin "${cumetalc_real}" DIRECTORY)
+find_path(CUMETAL_INCLUDE_DIR cuda_runtime.h
+    HINTS "${cumetal_bin}/../include" "$ENV{CUMETAL_ROOT}/include")
+if(NOT CUMETAL_INCLUDE_DIR)
+    message(FATAL_ERROR "Set -DCUMETAL_INCLUDE_DIR=/path/to/cumetal/include.")
+endif()
+
+# Call cuMetal directly: no NVIDIA toolkit or CMake CUDA detection needed.
+enable_testing()
+file(GLOB sources CONFIGURE_DEPENDS "src/*.cu")
+file(GLOB_RECURSE headers CONFIGURE_DEPENDS "src/*.h" "src/*.hpp" "src/*.cuh")
+add_custom_target(run
+    COMMAND ${CMAKE_CTEST_COMMAND} --verbose --output-on-failure
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    USES_TERMINAL
+    VERBATIM
 )
-FetchContent_MakeAvailable(hip_cpu)
-
-# HIP-CPU's bundled libco unconditionally calls VALGRIND_STACK_REGISTER on
-# aarch64 / arm even when valgrind.h is absent (the x86 / sjlj variants
-# guard it correctly; the ARM ones don't). Stub it out as a no-op when
-# valgrind isn't installed -- it's purely a tool-hint macro.
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
-    add_compile_options("SHELL:-D VALGRIND_STACK_REGISTER(a,b)=((void)0)")
-endif()
-
-# --- Examples -----------------------------------------------------------
-
-add_executable(matmul src/matmul.cpp)
-target_link_libraries(matmul PRIVATE hip_cpu_rt::hip_cpu_rt)
-
-add_executable(prefix_sum src/prefix_sum.cpp)
-target_link_libraries(prefix_sum PRIVATE hip_cpu_rt::hip_cpu_rt)
-
-
-add_executable(vecadd src/vecadd.cpp)
-target_link_libraries(vecadd PRIVATE hip_cpu_rt::hip_cpu_rt)
+foreach(source IN LISTS sources)
+    get_filename_component(example "${source}" NAME_WE)
+    set(binary "${CMAKE_CURRENT_BINARY_DIR}/bin/${example}")
+    add_custom_command(
+        OUTPUT "${binary}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/bin"
+        COMMAND "${CUMETALC}" -I "${CUMETAL_INCLUDE_DIR}" "${source}" -o "${binary}"
+        DEPENDS "${source}" ${headers} "${CUMETALC}"
+        VERBATIM
+    )
+    add_custom_target(${example} ALL DEPENDS "${binary}")
+    add_dependencies(run ${example})
+    add_test(NAME ${example} COMMAND "${binary}")
+endforeach()

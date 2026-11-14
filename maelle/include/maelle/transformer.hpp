@@ -2,8 +2,6 @@
 
 #include <string>
 
-#include "lune/mlp.hpp"
-
 namespace maelle {
 
 class Transformer {
@@ -13,10 +11,11 @@ public:
     std::string describe() const
     {
         // Toy use of a lune primitive so the cross-folder import is exercised.
-        lune::MLP ffn(d_model_, d_model_ * 4);
-        return "maelle::Transformer(d=" + std::to_string(d_model_) +
-            ", layers=" + std::to_string(n_layers_) +
-            ", ffn=" + ffn.describe() + ")";
+        // lune::MLP ffn(d_model_, d_model_ * 4);
+        // return "maelle::Transformer(d=" + std::to_string(d_model_) +
+        //     ", layers=" + std::to_string(n_layers_) +
+        //     ", ffn=" + ffn.describe() + ")";
+        return "";
     }
 
 private:

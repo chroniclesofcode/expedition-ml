@@ -1,21 +1,31 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <memory>
+
+#include "lune/layer.hpp"
+#include "lune/model.hpp"
+#include "lune/tensor.hpp"
 
 namespace lune {
 
 class MLP {
 public:
-    MLP(int in_dim, int out_dim) : in_dim_{in_dim}, out_dim_{out_dim} {}
+    MLP(std::vector<std::unique_ptr<Layer>> layers) : layers_{std::move(layers)} {}
+
+    Tensor forward_pass(const Tensor& input)
+    {
+        return Tensor{};
+    }
 
     std::string describe() const
     {
-        return "lune::MLP(" + std::to_string(in_dim_) + " -> " + std::to_string(out_dim_) + ")";
+        return "describing lune lol";
     }
 
 private:
-    int in_dim_;
-    int out_dim_;
+    std::vector<std::unique_ptr<Layer>> layers_;
 };
 
 }  // namespace lune
